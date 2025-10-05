@@ -1,1 +1,21 @@
 
+# wrangler.toml
+name = "honor-sales-worker"
+main = "src/index.ts"
+compatibility_date = "2024-05-15"
+
+# Binding برای اتصال به D1 (پایگاه داده فروش)
+[[d1_databases]]
+binding = "DB"  # env.DB در Worker
+database_name = "honor_sales_db" 
+database_id = "92efaa3a-c967-4131-9aca-be589a41a6f2" # <--- ID واقعی شما
+
+# Binding برای اتصال به R2 (ذخیره سازی تصاویر فاکتور)
+[[r2_buckets]]
+binding = "INVOICE_BUCKET" # env.INVOICE_BUCKET در Worker
+bucket_name = "sales-invoices-r2" # باید مطمئن شوید این bucket در R2 ایجاد شده است.
+
+# پیکربندی Durable Objects (برای مدیریت IMEI)
+[[durable_objects.bindings]]
+name = "IMEI_MANAGER" # env.IMEI_MANAGER در Worker
+class_name = "IMEI_Manager"
