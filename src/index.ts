@@ -1,5 +1,13 @@
 // src/index.ts
 
+// اضافه کردن این خط (یا یک import) برای تعریف کلاس Durable Object
+export { IMEI_Manager } from './imei_manager'; 
+
+export interface Env {
+    DB: D1Database;
+    IMEI_MANAGER: DurableObjectNamespace;
+}
+
 export interface Env {
     DB: D1Database;
     IMEI_MANAGER: DurableObjectNamespace;
