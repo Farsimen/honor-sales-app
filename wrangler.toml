@@ -5,19 +5,17 @@ compatibility_date = "2024-05-15"
 
 # Binding برای اتصال به D1 (پایگاه داده فروش)
 [[d1_databases]]
-binding = "DB"  # env.DB در Worker
+binding = "DB"
 database_name = "honor_sales_db" 
-database_id = "92efaa3a-c967-4131-9aca-be589a41a6f2" # <--- ID واقعی شما
+database_id = "92efaa3a-c967-4131-9aca-be589a41a6f2"
 
-# پیکربندی Durable Objects (برای مدیریت IMEI)
+# تعریف ارتباط Worker با Durable Object
 [[durable_objects.bindings]]
-name = "IMEI_MANAGER" # env.IMEI_MANAGER در Worker
-class_name = "IMEI_Manager"
-# wrangler.toml
+name = "IMEI_MANAGER" 
+class_name = "IMEI_Manager" 
 
-# ... بقیه کد (bindings های D1 و Durable Objects)
-
-# این بخش برای ثبت (Migration) Durable Object لازم است
+# --- بخش حیاتی: ثبت Durable Object ---
+# این بخش خطای [code: 10061] را برطرف می کند.
 [[migrations]]
-tag = "v1-initial-do" # هر نامی می تواند باشد، برای سادگی
+tag = "v1-initial-do" 
 new_classes = ["IMEI_Manager"]
