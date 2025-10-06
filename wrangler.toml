@@ -14,13 +14,7 @@ database_id = "92efaa3a-c967-4131-9aca-be589a41a6f2"
 name = "IMEI_MANAGER" 
 class_name = "IMEI_Manager" 
 
-# wrangler.toml
-
-# ... بقیه کد در اینجا ...
-
-# --- بخش حیاتی: ثبت Durable Object (تغییر یافته برای پلن رایگان) ---
+# --- بخش حیاتی: ثبت Durable Object ---
 [[migrations]]
-tag = "v1-initial-do" 
-# به جای new_classes از new_sqlite_classes استفاده می کنیم (به دلیل محدودیت پلن رایگان)
-new_sqlite_classes = ["IMEI_Manager"] 
-# new_classes = ["IMEI_Manager"] <--- این خط باید حذف شود
+tag = "v1-initial-do"
+new_sqlite_classes = ["IMEI_Manager"]  # خطای 10097 را برطرف می کند
