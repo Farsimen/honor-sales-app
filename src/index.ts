@@ -50,17 +50,16 @@ const router = Router();
 
 // 1. مسیر ثبت فروش (POST): هدایت به Durable Object
 router.post('/api/sales/register', async (request: IRequest, env: Env) => {
-    // از IMEI_MANAGER که در Wrangler.toml تعریف شده، استفاده کنید.
+    // از IMEI_MANAGER استفاده کنید، نه API_WORKER
     const id = env.IMEI_MANAGER.idFromName("global-sales-manager");
     const stub = env.IMEI_MANAGER.get(id);
     return stub.fetch(request);
 });
 
-// 2. مسیر دانلود خروجی CSV (حل مشکل دانلود)
+// (داخل تابع fetch Worker اصلی)
+// مسیر دانلود خروجی CSV
 router.get('/api/sales/export', async (request: IRequest, env: Env) => {
-    // ... (منطق D1 برای تولید CSV)
-    const csvData = "ID,Seller ID,Model\n1,seller-001,Magic6 Pro"; // Placeholder
-    
+    // ... منطق تولید csvData
     return new Response(csvData, { 
         headers: { 
             'Content-Type': 'text/csv; charset=utf-8', 
