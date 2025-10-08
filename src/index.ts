@@ -1,17 +1,21 @@
-// فایل: src/index.ts (کد بهبود یافته Worker با امکانات مدیریتی)
+// فایل: src/index.ts (بک‌اند بهبود یافته با احراز هویت صحیح)
 
 import { IRequest, Router } from 'itty-router';
 
-// تعریف Worker Environment
 export interface Env {
     IMEI_MANAGER: DurableObjectNamespace;
     honor_sales_db: D1Database;
 }
 
-// رمز عبور مدیریت (در production باید از environment variable استفاده کرد)
+// رمز عبور مدیریت (در production باید از environment variable استفاده شود)
 const ADMIN_PASSWORD = 'Honor2025Admin!';
 
-// کلاس Durable Object برای مدیریت حالت و قفل IMEI
+// تابع بررسی احراز هویت مدیر
+function authenticateAdmin(request: Request): boolean {
+    const authHeader = request.headers.get('X-Admin-Password');
+    return authHeader === ADMIN_PASSWORD;
+}
+
 export class IMEI_Manager {
     state: DurableObjectState;
     env: Env;
@@ -40,7 +44,6 @@ export class IMEI_Manager {
                     });
                 }
 
-                // اعتبارسنجی IMEI
                 if (!data.imei || data.imei.length !== 15) {
                     return new Response(JSON.stringify({ 
                         success: false,
@@ -54,7 +57,6 @@ export class IMEI_Manager {
                     });
                 }
 
-                // بررسی تکراری نبودن IMEI
                 const existingCheck = await this.env.honor_sales_db.prepare(
                     "SELECT id FROM sales WHERE imei = ?"
                 ).bind(data.imei).first();
@@ -72,7 +74,6 @@ export class IMEI_Manager {
                     });
                 }
                 
-                // عملیات D1: ثبت فروش
                 const saleId = `sale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 const statement = this.env.honor_sales_db.prepare(
                     "INSERT INTO sales (id, seller_id, imei, phone_model, sale_date, city, phone_number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
@@ -144,33 +145,17 @@ export class IMEI_Manager {
     }
 }
 
-// تابع بررسی احراز هویت مدیر
-function authenticateAdmin(request: Request): boolean {
-    const authHeader = request.headers.get('X-Admin-Password');
-    return authHeader === ADMIN_PASSWORD;
-}
-
-// Worker اصلی
 const router = Router();
 
-// Root endpoint برای تست
 router.get('/', () => {
     return new Response(JSON.stringify({ 
         message: "Honor Sales Worker API v2.0 - Enhanced Edition",
         status: "active",
-        features: [
-            "Mobile responsive design",
-            "QR/Barcode scanner support",
-            "Admin authentication",
-            "Enhanced data export"
-        ],
         endpoints: [
             "POST /api/sales/register",
-            "GET /api/sales/data", 
-            "GET /api/sales/export",
+            "GET /api/sales/data",
             "GET /api/admin/export (requires auth)",
-            "DELETE /api/admin/clear (requires auth)",
-            "GET /api/stats"
+            "DELETE /api/admin/clear (requires auth)"
         ]
     }), { 
         headers: { 
@@ -180,7 +165,6 @@ router.get('/', () => {
     });
 });
 
-// 1. مسیر ثبت فروش (POST)
 router.post('/api/sales/register', async (request: IRequest, env: Env) => {
     try {
         const id = env.IMEI_MANAGER.idFromName("global-sales-manager");
@@ -200,8 +184,22 @@ router.post('/api/sales/register', async (request: IRequest, env: Env) => {
     }
 });
 
-// 2. مسیر مشاهده داده‌ها (عمومی)
+// مسیر مشاهده داده‌ها - فقط برای ادمین
 router.get('/api/sales/data', async (request: IRequest, env: Env) => {
+    if (!authenticateAdmin(request)) {
+        return new Response(JSON.stringify({ 
+            success: false,
+            message: "دسترسی غیرمجاز: احراز هویت مدیریت الزامی است" 
+        }), { 
+            status: 401,
+            headers: { 
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'X-Admin-Password'
+            }
+        });
+    }
+
     try {
         const { results } = await env.honor_sales_db.prepare(
             "SELECT * FROM sales ORDER BY created_at DESC LIMIT 100"
@@ -214,7 +212,8 @@ router.get('/api/sales/data', async (request: IRequest, env: Env) => {
         }), { 
             headers: { 
                 'Content-Type': 'application/json; charset=utf-8', 
-                'Access-Control-Allow-Origin': '*' 
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'X-Admin-Password'
             }
         });
     } catch (error: any) {
@@ -231,9 +230,8 @@ router.get('/api/sales/data', async (request: IRequest, env: Env) => {
     }
 });
 
-// 3. مسیر دانلود خروجی Excel (محدود شده)
-router.get('/api/sales/export', async (request: IRequest, env: Env) => {
-    // بررسی احراز هویت مدیر
+// مسیر دانلود خروجی Excel - فقط برای ادمین
+router.get('/api/admin/export', async (request: IRequest, env: Env) => {
     if (!authenticateAdmin(request)) {
         return new Response(JSON.stringify({ 
             success: false,
@@ -253,24 +251,25 @@ router.get('/api/sales/export', async (request: IRequest, env: Env) => {
         ).all();
         
         if (!results || results.length === 0) {
-            return new Response('ID,Seller ID,IMEI,Model,Sale Date,City,Phone Number,Registration Date\n', { 
+            return new Response('شناسه,کد فروشنده,IMEI,مدل,تاریخ فروش,شهر,شماره تماس,تاریخ ثبت\n', { 
                 headers: { 
-                    'Content-Type': 'text/csv; charset=utf-8', 
+                    'Content-Type': 'text/csv; charset=utf-8-bom', 
                     'Content-Disposition': 'attachment; filename="honor_sales_export_empty.csv"',
-                    'Access-Control-Allow-Origin': '*'
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'X-Admin-Password'
                 }
             });
         }
 
         // تبدیل JSON به CSV با encoding مناسب
-        let csv = "ID,Seller ID,IMEI,Model,Sale Date,City,Phone Number,Registration Date\n";
+        let csv = '\uFEFFشناسه,کد فروشنده,IMEI,مدل,تاریخ فروش,شهر,شماره تماس,تاریخ ثبت\n';
         results.forEach(row => {
             csv += `"${row.id}","${row.seller_id}","${row.imei}","${row.phone_model}","${row.sale_date}","${row.city || ''}","${row.phone_number || ''}","${row.created_at}"\n`;
         });
 
         return new Response(csv, { 
             headers: { 
-                'Content-Type': 'text/csv; charset=utf-8', 
+                'Content-Type': 'text/csv; charset=utf-8-bom', 
                 'Content-Disposition': 'attachment; filename="honor_sales_export.csv"',
                 'Access-Control-Allow-Origin': '*',
                 'Access-Control-Allow-Headers': 'X-Admin-Password'
@@ -290,61 +289,7 @@ router.get('/api/sales/export', async (request: IRequest, env: Env) => {
     }
 });
 
-// 4. مسیر آمار فروش (عمومی)
-router.get('/api/stats', async (request: IRequest, env: Env) => {
-    try {
-        // تعداد کل فروش
-        const totalSales = await env.honor_sales_db.prepare(
-            "SELECT COUNT(*) as count FROM sales"
-        ).first();
-
-        // فروش امروز
-        const today = new Date().toISOString().split('T')[0];
-        const todaySales = await env.honor_sales_db.prepare(
-            "SELECT COUNT(*) as count FROM sales WHERE DATE(created_at) = ?"
-        ).bind(today).first();
-
-        // فروش این ماه
-        const thisMonth = new Date().toISOString().substr(0, 7); // YYYY-MM
-        const monthSales = await env.honor_sales_db.prepare(
-            "SELECT COUNT(*) as count FROM sales WHERE strftime('%Y-%m', created_at) = ?"
-        ).bind(thisMonth).first();
-
-        // محبوب‌ترین مدل‌ها
-        const { results: topModels } = await env.honor_sales_db.prepare(
-            "SELECT phone_model, COUNT(*) as count FROM sales GROUP BY phone_model ORDER BY count DESC LIMIT 5"
-        ).all();
-
-        return new Response(JSON.stringify({ 
-            success: true,
-            stats: {
-                totalSales: totalSales?.count || 0,
-                todaySales: todaySales?.count || 0,
-                monthSales: monthSales?.count || 0,
-                topModels: topModels || []
-            },
-            generated_at: new Date().toISOString()
-        }), { 
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8', 
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
-    } catch (error: any) {
-        return new Response(JSON.stringify({ 
-            success: false,
-            message: `خطا در بازیابی آمار: ${error.message}` 
-        }), { 
-            status: 500,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
-    }
-});
-
-// 5. مسیر پاک کردن داده‌ها (فقط مدیر)
+// مسیر پاک کردن داده‌ها - فقط مدیر
 router.delete('/api/admin/clear', async (request: IRequest, env: Env) => {
     if (!authenticateAdmin(request)) {
         return new Response(JSON.stringify({ 
@@ -389,7 +334,6 @@ router.delete('/api/admin/clear', async (request: IRequest, env: Env) => {
     }
 });
 
-// 6. مدیریت مسیرهای نامشخص
 router.all('*', () => new Response(JSON.stringify({ 
     success: false,
     message: "مسیر یافت نشد" 
@@ -401,10 +345,8 @@ router.all('*', () => new Response(JSON.stringify({
     }
 }));
 
-// تابع fetch اصلی Worker
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-        // پاسخ OPTIONS برای CORS
         if (request.method === 'OPTIONS') {
             return new Response(null, {
                 headers: {
