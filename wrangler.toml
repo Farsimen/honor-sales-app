@@ -7,7 +7,7 @@ compatibility_date = "2024-05-15"
 [[d1_databases]]
 binding = "honor_sales_db"
 database_name = "honor_sales_db" 
-database_id = "92efaa3a-c967-4131-9aca-be589a41a6f2"
+database_id = "YOUR_DATABASE_ID_HERE"  # این را با ID واقعی جایگزین کن
 
 # تعریف ارتباط Worker با Durable Object
 [[durable_objects.bindings]]
