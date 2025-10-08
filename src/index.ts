@@ -1,5 +1,3 @@
-// فایل: src/index.ts (بک‌اند بهبود یافته با احراز هویت صحیح)
-
 import { IRequest, Router } from 'itty-router';
 
 export interface Env {
@@ -7,13 +5,30 @@ export interface Env {
     honor_sales_db: D1Database;
 }
 
-// رمز عبور مدیریت (در production باید از environment variable استفاده شود)
 const ADMIN_PASSWORD = 'Honor2025Admin!';
 
-// تابع بررسی احراز هویت مدیر
 function authenticateAdmin(request: Request): boolean {
     const authHeader = request.headers.get('X-Admin-Password');
     return authHeader === ADMIN_PASSWORD;
+}
+
+function createCORSHeaders() {
+    return {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Seller-ID, X-Admin-Password, Accept, Authorization',
+        'Access-Control-Max-Age': '86400',
+    };
+}
+
+function createResponse(data: any, status: number = 200, additionalHeaders: Record<string, string> = {}) {
+    const headers = {
+        'Content-Type': 'application/json; charset=utf-8',
+        ...createCORSHeaders(),
+        ...additionalHeaders
+    };
+    
+    return new Response(JSON.stringify(data), { status, headers });
 }
 
 export class IMEI_Manager {
@@ -26,35 +41,27 @@ export class IMEI_Manager {
     }
     
     async fetch(request: Request): Promise<Response> {
+        if (request.method === 'OPTIONS') {
+            return new Response(null, { headers: createCORSHeaders() });
+        }
+
         if (request.method === 'POST') {
             try {
                 const sellerId = request.headers.get('X-Seller-ID');
                 const data: any = await request.json();
                 
                 if (!sellerId) {
-                    return new Response(JSON.stringify({ 
+                    return createResponse({ 
                         success: false,
                         message: "کد فروشنده (X-Seller-ID) یافت نشد" 
-                    }), { 
-                        status: 401,
-                        headers: { 
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Access-Control-Allow-Origin': '*' 
-                        }
-                    });
+                    }, 401);
                 }
 
                 if (!data.imei || data.imei.length !== 15) {
-                    return new Response(JSON.stringify({ 
+                    return createResponse({ 
                         success: false,
                         message: "شماره IMEI باید دقیقاً 15 رقم باشد" 
-                    }), { 
-                        status: 400,
-                        headers: { 
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Access-Control-Allow-Origin': '*' 
-                        }
-                    });
+                    }, 400);
                 }
 
                 const existingCheck = await this.env.honor_sales_db.prepare(
@@ -62,16 +69,10 @@ export class IMEI_Manager {
                 ).bind(data.imei).first();
 
                 if (existingCheck) {
-                    return new Response(JSON.stringify({ 
+                    return createResponse({ 
                         success: false,
                         message: `شماره IMEI ${data.imei} قبلاً ثبت شده است` 
-                    }), { 
-                        status: 409,
-                        headers: { 
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Access-Control-Allow-Origin': '*' 
-                        }
-                    });
+                    }, 409);
                 }
                 
                 const saleId = `sale-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -91,77 +92,48 @@ export class IMEI_Manager {
                 ).run();
                 
                 if (!result.success) {
-                    return new Response(JSON.stringify({ 
+                    return createResponse({ 
                         success: false,
                         message: "خطا در ذخیره اطلاعات در پایگاه داده" 
-                    }), { 
-                        status: 500,
-                        headers: { 
-                            'Content-Type': 'application/json; charset=utf-8',
-                            'Access-Control-Allow-Origin': '*' 
-                        }
-                    });
+                    }, 500);
                 }
                 
-                return new Response(JSON.stringify({ 
+                return createResponse({ 
                     success: true,
                     message: "ثبت فروش با موفقیت انجام شد.",
                     saleId: saleId,
                     timestamp: new Date().toLocaleString('fa-IR')
-                }), { 
-                    status: 200,
-                    headers: { 
-                        'Content-Type': 'application/json; charset=utf-8', 
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                        'Access-Control-Allow-Headers': 'Content-Type, X-Seller-ID'
-                    }
                 });
 
             } catch (e: any) {
                 console.error('Database error:', e);
-                return new Response(JSON.stringify({ 
+                return createResponse({ 
                     success: false,
                     message: `خطای سرور داخلی: ${e.message}` 
-                }), { 
-                    status: 500,
-                    headers: { 
-                        'Content-Type': 'application/json; charset=utf-8',
-                        'Access-Control-Allow-Origin': '*' 
-                    }
-                });
+                }, 500);
             }
         }
-        return new Response(JSON.stringify({ 
+        
+        return createResponse({ 
             success: false,
             message: "متد درخواست مجاز نیست" 
-        }), { 
-            status: 405,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 405);
     }
 }
 
 const router = Router();
 
 router.get('/', () => {
-    return new Response(JSON.stringify({ 
-        message: "Honor Sales Worker API v2.0 - Enhanced Edition",
+    return createResponse({ 
+        message: "Honor Sales Worker API v2.1 - Galaxy Edition",
         status: "active",
+        timestamp: new Date().toISOString(),
         endpoints: [
-            "POST /api/sales/register",
-            "GET /api/sales/data",
-            "GET /api/admin/export (requires auth)",
-            "DELETE /api/admin/clear (requires auth)"
+            "POST /api/sales/register - Register new sale",
+            "GET /api/sales/data - View sales data (admin only)",
+            "GET /api/admin/export - Export CSV (admin only)",
+            "DELETE /api/admin/clear - Clear all data (admin only)"
         ]
-    }), { 
-        headers: { 
-            'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*' 
-        }
     });
 });
 
@@ -171,78 +143,47 @@ router.post('/api/sales/register', async (request: IRequest, env: Env) => {
         const stub = env.IMEI_MANAGER.get(id);
         return stub.fetch(request);
     } catch (error: any) {
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: false,
             message: `خطا در اتصال به Durable Object: ${error.message}` 
-        }), { 
-            status: 500,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 500);
     }
 });
 
 // مسیر مشاهده داده‌ها - فقط برای ادمین
 router.get('/api/sales/data', async (request: IRequest, env: Env) => {
     if (!authenticateAdmin(request)) {
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: false,
             message: "دسترسی غیرمجاز: احراز هویت مدیریت الزامی است" 
-        }), { 
-            status: 401,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'X-Admin-Password'
-            }
-        });
+        }, 401);
     }
 
     try {
         const { results } = await env.honor_sales_db.prepare(
-            "SELECT * FROM sales ORDER BY created_at DESC LIMIT 100"
+            "SELECT * FROM sales ORDER BY created_at DESC LIMIT 1000"
         ).all();
         
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: true,
             count: results?.length || 0,
             data: results || []
-        }), { 
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8', 
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'X-Admin-Password'
-            }
         });
     } catch (error: any) {
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: false,
             message: `خطا در بازیابی داده‌ها: ${error.message}` 
-        }), { 
-            status: 500,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 500);
     }
 });
 
-// مسیر دانلود خروجی Excel - فقط برای ادمین
+// مسیر دانلود خروجی CSV - فقط برای ادمین
 router.get('/api/admin/export', async (request: IRequest, env: Env) => {
     if (!authenticateAdmin(request)) {
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: false,
             message: "دسترسی غیرمجاز: احراز هویت مدیریت الزامی است" 
-        }), { 
-            status: 401,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 401);
     }
 
     try {
@@ -251,57 +192,57 @@ router.get('/api/admin/export', async (request: IRequest, env: Env) => {
         ).all();
         
         if (!results || results.length === 0) {
-            return new Response('شناسه,کد فروشنده,IMEI,مدل,تاریخ فروش,شهر,شماره تماس,تاریخ ثبت\n', { 
+            const emptyCSV = '\uFEFFشناسه,کد فروشنده,IMEI,مدل,تاریخ فروش,شهر,شماره تماس,تاریخ ثبت\n';
+            return new Response(emptyCSV, { 
                 headers: { 
                     'Content-Type': 'text/csv; charset=utf-8-bom', 
-                    'Content-Disposition': 'attachment; filename="honor_sales_export_empty.csv"',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Headers': 'X-Admin-Password'
+                    'Content-Disposition': 'attachment; filename="honor_sales_empty.csv"',
+                    ...createCORSHeaders()
                 }
             });
         }
 
-        // تبدیل JSON به CSV با encoding مناسب
+        // تبدیل JSON به CSV با encoding مناسب برای فارسی
         let csv = '\uFEFFشناسه,کد فروشنده,IMEI,مدل,تاریخ فروش,شهر,شماره تماس,تاریخ ثبت\n';
-        results.forEach(row => {
-            csv += `"${row.id}","${row.seller_id}","${row.imei}","${row.phone_model}","${row.sale_date}","${row.city || ''}","${row.phone_number || ''}","${row.created_at}"\n`;
+        results.forEach((row: any) => {
+            const formatDate = (dateStr: string) => {
+                try {
+                    return new Date(dateStr).toLocaleDateString('fa-IR');
+                } catch {
+                    return dateStr;
+                }
+            };
+            
+            csv += `"${row.id || ''}","${row.seller_id || ''}","${row.imei || ''}","${row.phone_model || ''}","${row.sale_date || ''}","${row.city || ''}","${row.phone_number || ''}","${formatDate(row.created_at)}"\n`;
         });
 
+        const fileName = `honor_sales_export_${new Date().toISOString().split('T')[0]}.csv`;
+        
         return new Response(csv, { 
+            status: 200,
             headers: { 
                 'Content-Type': 'text/csv; charset=utf-8-bom', 
-                'Content-Disposition': 'attachment; filename="honor_sales_export.csv"',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'X-Admin-Password'
+                'Content-Disposition': `attachment; filename="${fileName}"`,
+                'Cache-Control': 'no-cache',
+                ...createCORSHeaders()
             }
         });
     } catch (error: any) {
-        return new Response(JSON.stringify({ 
+        console.error('Export error:', error);
+        return createResponse({ 
             success: false,
             message: `خطا در تولید فایل CSV: ${error.message}` 
-        }), { 
-            status: 500,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 500);
     }
 });
 
 // مسیر پاک کردن داده‌ها - فقط مدیر
 router.delete('/api/admin/clear', async (request: IRequest, env: Env) => {
     if (!authenticateAdmin(request)) {
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: false,
             message: "دسترسی غیرمجاز: احراز هویت مدیریت الزامی است" 
-        }), { 
-            status: 401,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 401);
     }
 
     try {
@@ -309,52 +250,32 @@ router.delete('/api/admin/clear', async (request: IRequest, env: Env) => {
             "DELETE FROM sales"
         ).run();
         
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: true,
             message: `تمام داده‌ها پاک شد (${result.changes} رکورد حذف شد)`,
             deleted_records: result.changes
-        }), { 
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'X-Admin-Password'
-            }
         });
     } catch (error: any) {
-        return new Response(JSON.stringify({ 
+        return createResponse({ 
             success: false,
             message: `خطا در پاک کردن داده‌ها: ${error.message}` 
-        }), { 
-            status: 500,
-            headers: { 
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*' 
-            }
-        });
+        }, 500);
     }
 });
 
-router.all('*', () => new Response(JSON.stringify({ 
+// Handle all other routes
+router.all('*', () => createResponse({ 
     success: false,
     message: "مسیر یافت نشد" 
-}), { 
-    status: 404,
-    headers: { 
-        'Content-Type': 'application/json; charset=utf-8',
-        'Access-Control-Allow-Origin': '*' 
-    }
-}));
+}, 404));
 
 export default {
     async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+        // Handle CORS preflight requests
         if (request.method === 'OPTIONS') {
             return new Response(null, {
-                headers: {
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type, X-Seller-ID, X-Admin-Password',
-                    'Access-Control-Max-Age': '86400',
-                },
+                status: 204,
+                headers: createCORSHeaders()
             });
         }
 
@@ -362,17 +283,13 @@ export default {
             return router.handle(request, env, ctx);
         } catch (error: any) {
             console.error('Worker error:', error);
-            return new Response(JSON.stringify({ 
+            return createResponse({ 
                 success: false,
-                message: `خطای عمومی Worker: ${error.message}` 
-            }), { 
-                status: 500,
-                headers: { 
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Access-Control-Allow-Origin': '*' 
-                }
-            });
+                message: `خطای عمومی Worker: ${error.message}`,
+                timestamp: new Date().toISOString()
+            }, 500);
         }
     },
+    
     IMEI_Manager: IMEI_Manager,
 };
